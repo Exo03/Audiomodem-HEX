@@ -16,8 +16,8 @@ struct WavHeader {
     char wave[4] = {'W', 'A', 'V', 'E'};
     char fmt[4] = {'f', 'm', 't', ' '};
     uint32_t fmtSize = 16;
-    uint16_t audioFormat = 1;      
-    uint16_t numChannels = 1;     
+    uint16_t audioFormat = 1;
+    uint16_t numChannels = 1;
     uint32_t sampleRate;
     uint32_t byteRate;
     uint16_t blockAlign;
@@ -28,19 +28,23 @@ struct WavHeader {
 #pragma pack(pop)
 
 bool modulate(const std::string& inputPath, const std::string& outputPath) {
-
-
     std::ifstream inFile(inputPath, std::ios::binary | std::ios::ate);
+    if (!inFile.is_open()) return false;
 
-    std::streamsize fileSize = inFile.tellg();
+    std::streamsize originalSize = inFile.tellg();
     inFile.seekg(0, std::ios::beg);
+
+    // Добавляем 1 пустой референсный байт (0x00) в начало.
+    // Он нужен демодулятору для сравнения фазы самого первого бита данных.
+    size_t fileSize = originalSize + 1;
     std::vector<uint8_t> buffer(fileSize);
-    inFile.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+    buffer[0] = 0x00;
+    inFile.read(reinterpret_cast<char*>(buffer.data() + 1), originalSize);
     inFile.close();
 
     const uint32_t SAMPLE_RATE = 44100;
-    const double CARRIER_FREQ = 8000.0;       
-    const int BIT_DURATION_MS = 1;           
+    const double CARRIER_FREQ = 8000.0;
+    const int BIT_DURATION_MS = 1;
     const int SAMPLES_PER_BIT = (SAMPLE_RATE * BIT_DURATION_MS) / 1000;
     const double AMPLITUDE = 30000.0;
 
@@ -54,13 +58,20 @@ bool modulate(const std::string& inputPath, const std::string& outputPath) {
     const double phaseIncrement = 2.0 * M_PI * CARRIER_FREQ / SAMPLE_RATE;
     double currentPhase = 0.0;
 
+    // Переменная для накопления сдвига фазы (DBPSK)
+    double phaseOffset = 0.0;
+
     for(size_t i = 0; i < fileSize; i++) {
         uint8_t byte = buffer[i];
 
         for(int bit = 7; bit >= 0; bit--) {
             bool isOne = (byte >> bit) & 1;
-            
-            double phaseOffset = isOne ? M_PI : 0.0;
+
+            // Если бит равен 1, инвертируем фазу на 180 градусов.
+            // Если бит 0, фаза остается такой же, как у предыдущего бита.
+            if (isOne) {
+                phaseOffset += M_PI;
+            }
 
             for(int s = 0; s < SAMPLES_PER_BIT; s++) {
                 double sample = AMPLITUDE * std::sin(currentPhase + phaseOffset);
@@ -75,7 +86,6 @@ bool modulate(const std::string& inputPath, const std::string& outputPath) {
     }
 
     std::ofstream outFile(outputPath, std::ios::binary);
-
     WavHeader header;
     header.sampleRate = SAMPLE_RATE;
     header.byteRate = SAMPLE_RATE * 1 * 16 / 8;
