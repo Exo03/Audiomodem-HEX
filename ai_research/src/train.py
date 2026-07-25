@@ -41,12 +41,10 @@ def train_model():
     criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    print("Загрузка данных...")
     X_train, Y_train = load_dataset(clean_dir, noisy_dir)
     X_train, Y_train = X_train.to(device), Y_train.to(device)
 
     epochs = 50
-    print(f"Начало обучения на {device}...")
     for epoch in range(epochs):
         model.train()
         optimizer.zero_grad()
@@ -56,11 +54,7 @@ def train_model():
         loss.backward()
         optimizer.step()
 
-        if (epoch + 1) % 10 == 0:
-            print(f'Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}')
-
     torch.save(model.state_dict(), os.path.join(SRC_DIR, "denoiser.pth"))
-    print("Модель сохранена как denoiser.pth")
 
 
 if __name__ == "__main__":

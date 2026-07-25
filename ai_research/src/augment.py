@@ -49,7 +49,6 @@ def process_pipeline(clean_dir, rir_dir, output_dir, target_snr=15):
             audio = add_reverberation(audio, rir_audio)
 
         audio = add_white_noise(audio, target_snr)
-
         audio = audio / (np.max(np.abs(audio)) + 1e-10)
 
         filename = os.path.basename(clean_path)

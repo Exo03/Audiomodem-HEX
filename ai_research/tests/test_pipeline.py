@@ -3,16 +3,17 @@ import subprocess
 import pytest
 import numpy as np
 import soundfile as sf
-import sys
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from src.augment import add_white_noise, add_jitter_delay, TARGET_SR
 
-# Настройка путей
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(TEST_DIR)
-CPP_MODULATOR = os.path.join(ROOT_DIR, "cpp_core", "modulator")
-CPP_DEMODULATOR = os.path.join(ROOT_DIR, "cpp_core", "demodulator")
+AI_RESEARCH_DIR = os.path.dirname(TEST_DIR)
+ROOT_DIR = os.path.dirname(AI_RESEARCH_DIR)
+
+CPP_SRC_DIR = os.path.join(ROOT_DIR, "app", "src", "main", "cpp")
+
+CPP_MODULATOR = os.path.join(TEST_DIR, "modulator.exe") if os.name == 'nt' else os.path.join(TEST_DIR, "modulator_bin")
+CPP_DEMODULATOR = os.path.join(TEST_DIR, "demodulator.exe") if os.name == 'nt' else os.path.join(TEST_DIR,
+                                                                                                 "demodulator_bin")
 
 TEST_BIN = os.path.join(TEST_DIR, "test_input.bin")
 CLEAN_WAV = os.path.join(TEST_DIR, "clean_test.wav")
@@ -22,12 +23,18 @@ OUT_BIN = os.path.join(TEST_DIR, "test_output.bin")
 
 @pytest.fixture(scope="session", autouse=True)
 def compile_cpp():
-    print("\nКомпиляция C++ исходников...")
-    os.makedirs(os.path.join(ROOT_DIR, "cpp_core"), exist_ok=True)
-    subprocess.run(["g++", "-O3", "cpp_core/modulator.cpp", "-o", CPP_MODULATOR], check=True)
-    subprocess.run(["g++", "-O3", "cpp_core/demodulator.cpp", "-o", CPP_DEMODULATOR], check=True)
+    modulator_src = os.path.join(CPP_SRC_DIR, "modulator.cpp")
+    demodulator_src = os.path.join(CPP_SRC_DIR, "demodulator.cpp")
+
+    assert os.path.exists(modulator_src)
+    assert os.path.exists(demodulator_src)
+
+    subprocess.run(["g++", "-O3", modulator_src, "-o", CPP_MODULATOR], check=True)
+    subprocess.run(["g++", "-O3", demodulator_src, "-o", CPP_DEMODULATOR], check=True)
+
     yield
-    for f in [TEST_BIN, CLEAN_WAV, NOISY_WAV, OUT_BIN]:
+
+    for f in [TEST_BIN, CLEAN_WAV, NOISY_WAV, OUT_BIN, CPP_MODULATOR, CPP_DEMODULATOR]:
         if os.path.exists(f):
             os.remove(f)
 
@@ -68,7 +75,7 @@ class TestAcousticModem:
 
         success_rate = calculate_success_rate(TEST_BIN, OUT_BIN)
 
-        assert success_rate >= 80.0, f"Провал при SNR {snr_db}dB. Успех: {success_rate}%"
+        assert success_rate >= 80.0
 
     @pytest.mark.parametrize("jitter_ms", [0, 2, 5])
     def test_sync_jitter(self, jitter_ms):
@@ -82,4 +89,4 @@ class TestAcousticModem:
         subprocess.run([CPP_DEMODULATOR, NOISY_WAV, OUT_BIN], check=True)
 
         success_rate = calculate_success_rate(TEST_BIN, OUT_BIN)
-        assert success_rate >= 90.0, f"Фазовая рассинхронизация при {jitter_ms}ms"
+        assert success_rate >= 90.0

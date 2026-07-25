@@ -3,7 +3,6 @@ import torch.nn as nn
 
 
 class PhasePreservingDenoiser(nn.Module):
-
     def __init__(self):
         super(PhasePreservingDenoiser, self).__init__()
 
@@ -22,7 +21,6 @@ class PhasePreservingDenoiser(nn.Module):
         )
 
     def forward(self, x):
-
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return decoded
@@ -32,4 +30,3 @@ if __name__ == "__main__":
     model = PhasePreservingDenoiser()
     dummy_audio = torch.randn(1, 1, 16000)
     output = model(dummy_audio)
-    print(f"Входной тензор: {dummy_audio.shape} -> Выходной тензор: {output.shape}")
