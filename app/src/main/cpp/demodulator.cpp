@@ -117,3 +117,17 @@ bool demodulate(const std::string& inputPath, const std::string& outputPath) {
 
     return true;
 }
+
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cerr << "Usage: demodulator <input_wav> <output_file>\n";
+        return 1;
+    }
+
+    if (demodulate(argv[1], argv[2])) {
+        return 0;
+    } else {
+        std::cerr << "Demodulation failed.\n";
+        return 1;
+    }
+}

@@ -99,3 +99,17 @@ bool modulate(const std::string& inputPath, const std::string& outputPath) {
 
     return true;
 }
+
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cerr << "Usage: modulator <input_file> <output_wav>\n";
+        return 1;
+    }
+
+    if (modulate(argv[1], argv[2])) {
+        return 0;
+    } else {
+        std::cerr << "Modulation failed.\n";
+        return 1;
+    }
+}
