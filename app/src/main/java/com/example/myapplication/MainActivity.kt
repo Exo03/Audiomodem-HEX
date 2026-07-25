@@ -254,42 +254,58 @@ fun ModemScreen() {
                             if (isListening) {
                                 val success = NativeModemCore.stopListening()
                                 isListening = false
+
                                 if (success) {
-                                    engineStatus = "Расшифровка аудио..."
+                                    // Меняем статус на UI перед запуском тяжелой задачи
+                                    engineStatus = "Очистка аудио от шумов..."
 
                                     coroutineScope.launch(Dispatchers.IO) {
-                                        val decoded = NativeModemCore.demodulateFile(inputWavPath, outputFilePath)
+                                        // 1. Создаем экземпляр нашего очистителя и путь для чистого файла
+                                        val denoiser = AudioDenoiser(context)
+                                        val cleanWavPath = File(context.cacheDir, "clean_rx.wav").absolutePath
 
-                                        if (decoded) {
-                                            engineStatus = "Файл успешно принят!"
+                                        // 2. Запускаем нейросеть
+                                        val isDenoised = denoiser.denoiseFile(inputWavPath, cleanWavPath)
 
-                                            // ДОБАВЬ ЭТОТ БЛОК ДЛЯ ПЕРЕНОСА ФАЙЛА В DOWNLOADS:
-                                            try {
-                                                val sourceFile = File(outputFilePath)
-                                                if (sourceFile.exists()) {
-                                                    val resolver = context.contentResolver
-                                                    val contentValues = android.content.ContentValues().apply {
-                                                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "received_file.bin")
-                                                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                                                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
-                                                    }
+                                        if (isDenoised) {
+                                            engineStatus = "Демодуляция данных..."
 
-                                                    val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                                                    if (uri != null) {
-                                                        resolver.openOutputStream(uri)?.use { outputStream ->
-                                                            sourceFile.inputStream().use { inputStream ->
-                                                                inputStream.copyTo(outputStream)
-                                                            }
+                                            // 3. Передаем в C++-ядро уже ОЧИЩЕННЫЙ файл (cleanWavPath)
+                                            val decoded = NativeModemCore.demodulateFile(cleanWavPath, outputFilePath)
+
+                                            if (decoded) {
+                                                engineStatus = "Файл успешно принят!"
+
+                                                // Блок для переноса файла в Downloads:
+                                                try {
+                                                    val sourceFile = File(outputFilePath)
+                                                    if (sourceFile.exists()) {
+                                                        val resolver = context.contentResolver
+                                                        val contentValues = android.content.ContentValues().apply {
+                                                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "received_file.bin")
+                                                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                                                            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
                                                         }
-                                                        engineStatus = "Сохранено в Загрузки!"
+
+                                                        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                                                        if (uri != null) {
+                                                            resolver.openOutputStream(uri)?.use { outputStream ->
+                                                                sourceFile.inputStream().use { inputStream ->
+                                                                    inputStream.copyTo(outputStream)
+                                                                }
+                                                            }
+                                                            engineStatus = "Сохранено в Загрузки!"
+                                                        }
                                                     }
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                    engineStatus = "Ошибка сохранения файла"
                                                 }
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                                engineStatus = "Ошибка сохранения файла"
+                                            } else {
+                                                engineStatus = "Ошибка демодуляции"
                                             }
                                         } else {
-                                            engineStatus = "Ошибка демодуляции"
+                                            engineStatus = "Ошибка работы нейросети"
                                         }
                                     }
                                 } else {
