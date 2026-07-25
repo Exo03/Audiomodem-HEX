@@ -64,6 +64,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation("com.google.oboe:oboe:1.10.0")
+    implementation("org.pytorch:pytorch_android_lite:1.13.0")
+    implementation("org.pytorch:pytorch_android_torchvision_lite:1.13.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
