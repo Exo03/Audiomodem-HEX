@@ -5,6 +5,8 @@ import librosa
 import soundfile as sf
 from scipy import signal
 
+TARGET_SR = 44100
+
 
 def add_white_noise(audio_signal, snr_db):
     signal_power = np.mean(audio_signal ** 2)
@@ -35,17 +37,15 @@ def process_pipeline(clean_dir, rir_dir, output_dir, target_snr=15):
     rir_files = glob.glob(os.path.join(rir_dir, "*.wav"))
 
     if not clean_files:
-        print(f"ОШИБКА: Нет чистых файлов в {clean_dir}")
         return
 
     for clean_path in clean_files:
-        audio, sr = librosa.load(clean_path, sr=None)
-
+        audio, sr = librosa.load(clean_path, sr=TARGET_SR)
         audio = add_jitter_delay(audio, sr)
 
         if rir_files:
             rir_path = np.random.choice(rir_files)
-            rir_audio, _ = librosa.load(rir_path, sr=sr)
+            rir_audio, _ = librosa.load(rir_path, sr=TARGET_SR)
             audio = add_reverberation(audio, rir_audio)
 
         audio = add_white_noise(audio, target_snr)
@@ -55,7 +55,6 @@ def process_pipeline(clean_dir, rir_dir, output_dir, target_snr=15):
         filename = os.path.basename(clean_path)
         out_path = os.path.join(output_dir, f"noisy_{target_snr}dB_{filename}")
         sf.write(out_path, audio, sr)
-        print(f"Сгенерирован: {out_path}")
 
 
 if __name__ == "__main__":
@@ -66,7 +65,5 @@ if __name__ == "__main__":
     RIR_DIR = os.path.join(AI_RESEARCH_DIR, "data", "rir")
     OUTPUT_DIR = os.path.join(AI_RESEARCH_DIR, "data", "noisy")
 
-    print("Запуск пайплайна...")
     for snr in [20, 15, 10, 5]:
         process_pipeline(CLEAN_DIR, RIR_DIR, OUTPUT_DIR, target_snr=snr)
-    print("Генерация завершена.")
