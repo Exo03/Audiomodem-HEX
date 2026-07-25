@@ -1,25 +1,17 @@
-# Указываем минимальную версию CMake (стандартная для современных Android-проектов)
 cmake_minimum_required(VERSION 3.22.1)
 
-# Имя проекта для C++ части
-project("audiomodem")
+project("modemcore")
 
-# Создаем саму библиотеку.
-# ВАЖНО: Имя "Klim" должно в точности совпадать с тем, что мы указали в System.loadLibrary("Klim")
-add_library(
-        Klim
-        SHARED
-        Klim.cpp
-)
+# Ищем библиотеку Oboe через prefab
+find_package(oboe REQUIRED CONFIG)
 
-# Подключаем стандартную библиотеку логирования Android (пригодится для отладки C++ кода)
-find_library(
-        log-lib
-        log
-)
+# Добавляем наш исходный файл (замени на имя своего файла, если оно другое)
+add_library(${CMAKE_PROJECT_NAME} SHARED
+        native-lib.cpp
+        modulator.cpp
+        demodulator.cpp)
 
-# Связываем нашу библиотеку Klim с системными библиотеками (например, с логгером)
-target_link_libraries(
-        Klim
-        ${log-lib}
-)
+# Линкуем библиотеки: наш проект, oboe и системный логгер
+target_link_libraries(${CMAKE_PROJECT_NAME}
+        oboe::oboe
+        log)

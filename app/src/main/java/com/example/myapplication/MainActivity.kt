@@ -1,31 +1,64 @@
 package com.example.myapplication
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.example.myapplication.ui.theme.MyApplicationTheme
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import android.content.Context
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 
+// Импортируем вашу тему и новые семантические цвета
+import com.example.myapplication.ui.theme.MyApplicationTheme
+import com.example.myapplication.ui.theme.TransferActive
+import com.example.myapplication.ui.theme.TransferComplete
+import com.example.myapplication.ui.theme.TransferError
+
+// Заглушка для NativeModem, так как она не предоставлена в контексте
+object NativeModem {
+    fun startListening(): Boolean = true
+    fun stopListening(): Boolean = true
+}
+
+// Заглушка для NativeModemStatus
+object NativeModemStatus {
+    const val TransferActive = 0
+    const val TransferComplete = 1
+    const val TransferError = 2
+}
+
+// Вспомогательная функция для применения модификаторов на основе условия
+fun Modifier.ifTrue(condition: Boolean, modifier: Modifier.() -> Modifier): Modifier {
+    return if (condition) {
+        this.then(modifier())
+    } else {
+        this
+    }
+}
 
 fun getBytesFromUri(context: Context, uri: Uri): ByteArray? {
     return try {
-        // ContentResolver помогает получить доступ к файлу по URI
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            // Читаем весь файл в массив байтов
             inputStream.readBytes()
         }
     } catch (e: Exception) {
@@ -45,9 +78,55 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Адаптивная карта передачи
+@Composable
+fun TransferCard(
+    label: String,
+    modifier: Modifier = Modifier,
+    color: Color,
+    icon: @Composable (modifier: Modifier) -> Unit,
+    onClick: () -> Unit
+) {
+    val isDark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(24.dp)
+
+    // Рамка применяется всегда, а легкий фон — только в светлой теме
+    val cardModifier = modifier
+        .clickable(onClick = onClick)
+        .background(
+            color = if (!isDark) color.copy(alpha = 0.05f) else Color.Transparent,
+            shape = shape
+        )
+        .border(1.dp, color = color, shape = shape)
+        .padding(2.dp)
+
+    Box(
+        modifier = cardModifier
+            .fillMaxWidth(0.55f)
+            .aspectRatio(1f),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            icon(Modifier.size(64.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = label,
+                color = if (!isDark) MaterialTheme.colorScheme.onBackground else color,
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
 @Composable
 fun ModemScreen() {
     val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
 
     var hasMicPermission by remember {
         mutableStateOf(
@@ -66,16 +145,15 @@ fun ModemScreen() {
 
     var engineStatus by remember { mutableStateOf("Ожидание запуска...") }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
-
-    // Новое состояние для хранения самих данных файла
     var fileBytes by remember { mutableStateOf<ByteArray?>(null) }
+
+    var isListening by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         selectedFileUri = uri
         if (uri != null) {
-            // Как только файл выбран, читаем его в массив байтов
             fileBytes = getBytesFromUri(context, uri)
         } else {
             fileBytes = null
@@ -91,84 +169,114 @@ fun ModemScreen() {
         verticalArrangement = Arrangement.Center
     ) {
 
-        // --- Блок проверки микрофона ---
+        // --- Центральный адаптивный блок ---
         if (hasMicPermission) {
-            Text(
-                text = "Микрофон: ДОСТУП РАЗРЕШЕН",
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelLarge
-            )
-        } else {
-            Text(
-                text = "Для приема данных нужен доступ к микрофону",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
+            // Весь этот Column занимает доступное пространство и центрирует контент
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
             ) {
-                Text("Разрешить микрофон")
+                // Адаптивная Row 1 (Отправить) - УБРАН .weight(1f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TransferCard(
+                        label = "Отправить",
+                        color = TransferActive, // Неоново-зеленый
+                        icon = { modifier ->
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Отправить",
+                                modifier = modifier,
+                                tint = TransferActive
+                            )
+                        },
+                        onClick = { filePickerLauncher.launch("*/*") }
+                    )
+                }
+
+                // Можно немного увеличить отступ между квадратными кнопками,
+                // чтобы смотрелось гармоничнее
+                Spacer(modifier = Modifier.height(48.dp))
+
+                // Адаптивная Row 2 (Получить/Стоп) - УБРАН .weight(1f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    val label = if (isListening) "Стоп" else "Получить"
+                    val color = if (isListening) TransferError else TransferComplete // Красный или фиолетовый
+
+                    TransferCard(
+                        label = label,
+                        color = color,
+                        icon = { modifier ->
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = label,
+                                modifier = modifier,
+                                tint = color
+                            )
+                        },
+                        onClick = {
+                            if (isListening) {
+                                val success = NativeModem.stopListening()
+                                if (success) {
+                                    isListening = false
+                                    engineStatus = "Прослушивание остановлено"
+                                } else {
+                                    engineStatus = "Ошибка остановки"
+                                }
+                            } else {
+                                val success = NativeModem.startListening()
+                                if (success) {
+                                    isListening = true
+                                    engineStatus = "Эфир прослушивается..."
+                                } else {
+                                    engineStatus = "Ошибка старта микрофона"
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        } else {
+            // Блок разрешения микрофона (если нет разрешения)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Для приема данных нужен доступ к микрофону",
+                    color = TransferError, // Используем ваш цвет ошибки
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                    modifier = Modifier.fillMaxWidth(0.8f).height(64.dp), // Крупная кнопка
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = TransferError,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("Разрешить микрофон", style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // --- Блок ядра аудиомодема ---
+        // --- Нижний неадаптивный блок ---
+        // Занимает мало места
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = engineStatus,
             color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleLarge
+            style = MaterialTheme.typography.bodyMedium, // Компактный текст
+            textAlign = TextAlign.Center
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { engineStatus = NativeModemCore.getEngineStatus() },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
-            Text("Инициализировать ядро")
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // --- Блок работы с файлами ---
-
-        val fileInfoText = if (selectedFileUri != null) {
-            val size = fileBytes?.size ?: 0
-            "Выбран файл:\n$selectedFileUri\n\nРазмер: $size байт"
-        } else {
-            "Файл для отправки не выбран"
-        }
-
-        Text(
-            text = fileInfoText,
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { filePickerLauncher.launch("*/*") },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.secondary,
-                contentColor = MaterialTheme.colorScheme.onSecondary
-            )
-        ) {
-            Text("Выбрать файл")
-        }
     }
 }
