@@ -16,8 +16,8 @@ struct WavHeader {
     char wave[4] = {'W', 'A', 'V', 'E'};
     char fmt[4] = {'f', 'm', 't', ' '};
     uint32_t fmtSize = 16;
-    uint16_t audioFormat = 1;      
-    uint16_t numChannels = 1;     
+    uint16_t audioFormat = 1;
+    uint16_t numChannels = 1;
     uint32_t sampleRate;
     uint32_t byteRate;
     uint16_t blockAlign;
