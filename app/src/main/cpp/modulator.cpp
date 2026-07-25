@@ -40,8 +40,8 @@ int main(int argc, char* argv[]) {
     inFile.close();
 
     const uint32_t SAMPLE_RATE = 44100;
-    const double CARRIER_FREQ = 1000.0;       
-    const int BIT_DURATION_MS = 10;           
+    const double CARRIER_FREQ = 8000.0;       
+    const int BIT_DURATION_MS = 1;           
     const int SAMPLES_PER_BIT = (SAMPLE_RATE * BIT_DURATION_MS) / 1000;
     const double AMPLITUDE = 30000.0;
 
