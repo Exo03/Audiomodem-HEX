@@ -26,9 +26,7 @@ struct WavHeader {
 };
 #pragma pack(pop)
 
-int main(int argc, char* argv[]) {
-    char* inputPath = argv[1];
-    char* outputPath = argv[2];
+bool demodulate(const std::string& inputPath, const std::string& outputPath) {
 
     std::ifstream inFile(inputPath, std::ios::binary);
     WavHeader header;
@@ -80,5 +78,5 @@ int main(int argc, char* argv[]) {
     outFile.write(reinterpret_cast<const char*>(recoveredData.data()), totalBytes);
     outFile.close();
 
-    return 0;
+    return true;
 }

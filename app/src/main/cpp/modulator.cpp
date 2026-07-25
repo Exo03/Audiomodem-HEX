@@ -27,9 +27,8 @@ struct WavHeader {
 };
 #pragma pack(pop)
 
-int main(int argc, char* argv[]) {
-    std::string inputPath = argv[1];
-    std::string outputPath = argv[2];
+bool modulate(const std::string& inputPath, const std::string& outputPath) {
+
 
     std::ifstream inFile(inputPath, std::ios::binary | std::ios::ate);
 
@@ -88,5 +87,5 @@ int main(int argc, char* argv[]) {
     outFile.write(reinterpret_cast<const char*>(audioData.data()), dataSize);
     outFile.close();
 
-    return 0;
+    return true;
 }

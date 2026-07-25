@@ -34,6 +34,11 @@ import com.example.myapplication.ui.theme.TransferActive
 import com.example.myapplication.ui.theme.TransferComplete
 import com.example.myapplication.ui.theme.TransferError
 
+import android.media.MediaPlayer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
+
 // Заглушка для NativeModem, так как она не предоставлена в контексте
 object NativeModem {
     fun startListening(): Boolean = true
@@ -56,15 +61,14 @@ fun Modifier.ifTrue(condition: Boolean, modifier: Modifier.() -> Modifier): Modi
     }
 }
 
-fun getBytesFromUri(context: Context, uri: Uri): ByteArray? {
-    return try {
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            inputStream.readBytes()
+fun copyUriToCache(context: Context, uri: Uri, fileName: String): String {
+    val file = File(context.cacheDir, fileName)
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        file.outputStream().use { output ->
+            input.copyTo(output)
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
     }
+    return file.absolutePath
 }
 
 class MainActivity : ComponentActivity() {
@@ -146,17 +150,40 @@ fun ModemScreen() {
     var engineStatus by remember { mutableStateOf("Ожидание запуска...") }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var fileBytes by remember { mutableStateOf<ByteArray?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     var isListening by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        selectedFileUri = uri
         if (uri != null) {
-            fileBytes = getBytesFromUri(context, uri)
-        } else {
-            fileBytes = null
+            engineStatus = "Модуляция файла..."
+
+            // Запускаем работу в фоновом потоке
+            coroutineScope.launch(Dispatchers.IO) {
+                val inputPath = copyUriToCache(context, uri, "input_payload.bin")
+                val outputWavPath = File(context.cacheDir, "modem_tx.wav").absolutePath
+
+                // Вызываем JNI модулятор
+                val success = NativeModemCore.modulateFile(inputPath, outputWavPath)
+
+                if (success) {
+                    engineStatus = "Воспроизведение..."
+                    // Включаем динамик
+                    val mediaPlayer = MediaPlayer().apply {
+                        setDataSource(outputWavPath)
+                        prepare()
+                        start()
+                        setOnCompletionListener {
+                            engineStatus = "Передача завершена"
+                            release() // Обязательно освобождаем ресурсы
+                        }
+                    }
+                } else {
+                    engineStatus = "Ошибка при создании звука"
+                }
+            }
         }
     }
 
@@ -220,19 +247,60 @@ fun ModemScreen() {
                             )
                         },
                         onClick = {
+                            // Генерируем пути заранее
+                            val inputWavPath = File(context.cacheDir, "modem_rx.wav").absolutePath
+                            val outputFilePath = File(context.cacheDir, "received_payload.bin").absolutePath
+
                             if (isListening) {
-                                val success = NativeModem.stopListening()
+                                val success = NativeModemCore.stopListening()
+                                isListening = false
                                 if (success) {
-                                    isListening = false
-                                    engineStatus = "Прослушивание остановлено"
+                                    engineStatus = "Расшифровка аудио..."
+
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val decoded = NativeModemCore.demodulateFile(inputWavPath, outputFilePath)
+
+                                        if (decoded) {
+                                            engineStatus = "Файл успешно принят!"
+
+                                            // ДОБАВЬ ЭТОТ БЛОК ДЛЯ ПЕРЕНОСА ФАЙЛА В DOWNLOADS:
+                                            try {
+                                                val sourceFile = File(outputFilePath)
+                                                if (sourceFile.exists()) {
+                                                    val resolver = context.contentResolver
+                                                    val contentValues = android.content.ContentValues().apply {
+                                                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "received_file.bin")
+                                                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                                                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                                                    }
+
+                                                    val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                                                    if (uri != null) {
+                                                        resolver.openOutputStream(uri)?.use { outputStream ->
+                                                            sourceFile.inputStream().use { inputStream ->
+                                                                inputStream.copyTo(outputStream)
+                                                            }
+                                                        }
+                                                        engineStatus = "Сохранено в Загрузки!"
+                                                    }
+                                                }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                                engineStatus = "Ошибка сохранения файла"
+                                            }
+                                        } else {
+                                            engineStatus = "Ошибка демодуляции"
+                                        }
+                                    }
                                 } else {
-                                    engineStatus = "Ошибка остановки"
+                                    engineStatus = "Ошибка остановки микрофона"
                                 }
                             } else {
-                                val success = NativeModem.startListening()
+                                // Передаем путь в C++ ядро
+                                val success = NativeModemCore.startListening(inputWavPath)
                                 if (success) {
                                     isListening = true
-                                    engineStatus = "Эфир прослушивается..."
+                                    engineStatus = "Слушаем эфир..."
                                 } else {
                                     engineStatus = "Ошибка старта микрофона"
                                 }
